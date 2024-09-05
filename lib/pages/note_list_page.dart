@@ -9,17 +9,21 @@ class NoteListPage extends StatefulWidget {
 }
 
 class _NoteListPageState extends State<NoteListPage> {
+  String selectedCategory = "All";
+  
   @override
   void initState() {
     super.initState();
-    // Load notes when the page is initialized
-    Provider.of<NoteProvider>(context, listen: false).loadNotes();
+    final noteProvider = Provider.of<NoteProvider>(context, listen: false);
+    noteProvider.loadNotes();
+    noteProvider.loadCategories();
   }
 
   // A method to display a dialog for adding a new note
   Future<void> _addNoteDialog(BuildContext context) async {
     final titleController = TextEditingController();
     final contentController = TextEditingController();
+    final categoryController = TextEditingController();
 
     return showDialog<void>(
       context: context,
@@ -38,6 +42,10 @@ class _NoteListPageState extends State<NoteListPage> {
                 controller: contentController,
                 decoration: const InputDecoration(labelText: 'Content'),
               ),
+              TextField(
+              controller: categoryController,
+              decoration: const InputDecoration(labelText: 'Category'),
+            ),
             ],
           ),
           actions: <Widget>[
@@ -54,6 +62,7 @@ class _NoteListPageState extends State<NoteListPage> {
                   id: DateTime.now().toString(), // Unique id for each note
                   title: titleController.text,
                   content: contentController.text,
+                  category: categoryController.text, 
                   isChecked: false,
                 );
                 Provider.of<NoteProvider>(context, listen: false)
@@ -71,6 +80,7 @@ class _NoteListPageState extends State<NoteListPage> {
   Future<void> _updateNoteDialog(BuildContext context, Note note) async {
     final titleController = TextEditingController(text: note.title);
     final contentController = TextEditingController(text: note.content);
+    final categoryController = TextEditingController();
 
     return showDialog<void>(
       context: context,
@@ -104,6 +114,7 @@ class _NoteListPageState extends State<NoteListPage> {
                   id: note.id,
                   title: titleController.text,
                   content: contentController.text,
+                  category: categoryController.text,
                   isChecked: note.isChecked, // Preserve the checkmark status
                 );
                 Provider.of<NoteProvider>(context, listen: false)
@@ -120,56 +131,75 @@ class _NoteListPageState extends State<NoteListPage> {
   @override
   Widget build(BuildContext context) {
     final noteProvider = Provider.of<NoteProvider>(context);
+    final notesToShow = selectedCategory == "All"
+        ? noteProvider.notes
+        : noteProvider.notes.where((note) => note.category == selectedCategory).toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notlar'),
       ),
-      body: noteProvider.notes.isEmpty
-          ? const Center(
-              child: Text('No notes available.'),
-            )
-          : ListView.builder(
-              itemCount: noteProvider.notes.length,
-              itemBuilder: (context, index) {
-                final note = noteProvider.notes[index];
-                return ListTile(
-                  title: Text(
-                    note.title,
-                    style: TextStyle(
-                      decoration: note.isChecked
-                          ? TextDecoration.lineThrough
-                          : TextDecoration.none,
-                    ),
-                  ),
-                  subtitle: Text(note.content),
-                  leading: Checkbox(
-                    value: note.isChecked,
-                    onChanged: (bool? value) {
-                      final updatedNote = Note(
-                        id: note.id,
-                        title: note.title,
-                        content: note.content,
-                        isChecked: value!, // Update the isChecked value
-                      );
-                      noteProvider.updateNote(
-                          updatedNote); // Persist the change to the database
-                    },
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () {
-                      noteProvider.deleteNote(note.id);
-                    },
-                  ),
-                  onTap: () =>
-                      _updateNoteDialog(context, note), // Tap to update
-                );
+      body: Column(
+        children: [
+          // Category selection dropdown that spans the full width
+          Container(
+            padding: const EdgeInsets.fromLTRB(30,0,30,0),
+            child: DropdownButton<String>(
+              isExpanded: true, // Make sure the dropdown itself can expand
+              value: selectedCategory,
+              onChanged: (String? newValue) {
+                setState(() {
+                  selectedCategory = newValue!;
+                });
               },
+              items: <String>['All', ...noteProvider.categories]
+                  .map<DropdownMenuItem<String>>((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
             ),
+          ),
+          Expanded(
+            child: notesToShow.isEmpty
+                ? const Center(child: Text('No notes available.'))
+                : ListView.builder(
+                    itemCount: notesToShow.length,
+                    itemBuilder: (context, index) {
+                      final note = notesToShow[index];
+                      return ListTile(
+                        title: Text(note.title),
+                        subtitle: Text(note.content),
+                        leading: Checkbox(
+                          value: note.isChecked,
+                          onChanged: (bool? value) {
+                            final updatedNote = Note(
+                              id: note.id,
+                              title: note.title,
+                              content: note.content,
+                              category: note.category, 
+                              isChecked: value!,
+                            );
+                            noteProvider.updateNote(updatedNote);
+                          },
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete),
+                          onPressed: () {
+                            noteProvider.deleteNote(note.id);
+                          },
+                        ),
+                        onTap: () => _updateNoteDialog(context, note),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          _addNoteDialog(context); // Open the add note form dialog
+          _addNoteDialog(context); // Open the add note dialog
         },
         child: const Icon(Icons.add),
       ),
